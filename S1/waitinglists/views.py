@@ -1,8 +1,8 @@
 import os
+import requests
 from datetime import datetime
 from pathlib import Path
 
-import requests
 from connect.models import UserDetail
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib.auth.models import User
@@ -14,6 +14,8 @@ from django.urls import reverse
 from django.utils import timezone
 from dotenv import load_dotenv
 
+from theoryroster.models import RosterEntry
+
 from .forms import AttendanceForm, CommentForm, UserDetailForm
 from .helpers import (
     send_moodle_find_user,
@@ -23,10 +25,9 @@ from .helpers import (
     send_forum_msg,
     send_mail,
     can_upgrade,
-    upgrade_and_add_to_roster,
-    eud_header,
 )
 from .models import Attendance, Session, WaitingList, Module, Signup, QuizCompletion
+from .task_queue import enqueue
 
 from theoryroster.models import RosterEntry
 
@@ -52,7 +53,7 @@ def can_sign_up(user, module) -> bool:
     if module.name != "Module 5":
         return True
     else:
-        has_rating = user.userdetail.rating > 1
+        has_rating = user.userdetail.rating == 2
         has_hours = get_hours(user.username) >= 20
         # If Module 5, user must not be on theory roster
         try:
@@ -107,15 +108,13 @@ def check_modules(user):
         wait3 = WaitingList.objects.get(user=user, module=mod3)
         wait4 = WaitingList.objects.get(user=user, module=mod4)
         if wait3.completed and wait4.completed:
-            data = {
-                "user_cid": user.username,
-                "exam_id": 6,
-                "instructor_cid": os.getenv("INSTRUCTOR_CID"),
-            }
-            requests.post(
-                "https://core.vateud.net/api/facility/training/exams/assign",
-                headers=eud_header,
-                data=data,
+            enqueue(
+                "assign_training_exam",
+                {
+                    "user_cid": user.username,
+                    "exam_id": 6,
+                    "instructor_cid": os.getenv("INSTRUCTOR_CID"),
+                },
             )
     except:
         pass
@@ -140,7 +139,7 @@ def index(request):
     module_list = Module.objects.all().order_by("name")
     if not module_2_completed:
         module_list = module_list[:1]
-    elif not can_upgrade(user, module_list[-1]):
+    elif not can_sign_up(user, module_list[-1]):
         module_list = module_list[:-1]
 
     modules = {}
@@ -461,6 +460,7 @@ def user_detail(request, user_id):
         except:
             modules_completed.append(False)
     comments = user.comments.all().order_by("-date_added")
+    on_theory_roster = RosterEntry.objects.filter(cid=int(user_id)).exists()
     if request.method == "POST":
         form = CommentForm(request.POST)
         if form.is_valid():
@@ -480,9 +480,16 @@ def user_detail(request, user_id):
         "modules_completed": modules_completed,
         "comments": comments,
         "form": form,
+        "on_theory_roster": on_theory_roster,
     }
     template = loader.get_template("waitinglists/user_detail.html")
     return HttpResponse(template.render(context, request))
+
+
+@user_passes_test(is_mentor)
+def remove_from_roster(request, user_id):
+    RosterEntry.objects.filter(cid=int(user_id)).delete()
+    return HttpResponseRedirect(reverse("user_details", args=[user_id]))
 
 
 @user_passes_test(is_mentor)
@@ -519,9 +526,5 @@ def upgrade(request):
     if not can_upgrade(int(user.username)):
         return HttpResponseRedirect(reverse("index"))
 
-    succ = upgrade_and_add_to_roster(int(user.username))
-    if not succ:
-        return HttpResponseRedirect(reverse("index"))
-    user.userdetail.upgraded = True
-    user.userdetail.save()
+    enqueue("upgrade_user", {"vatsim_id": int(user.username)})
     return HttpResponseRedirect(reverse("index"))

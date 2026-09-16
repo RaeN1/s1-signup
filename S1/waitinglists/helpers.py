@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 
 from theoryroster.models import RosterEntry
 from .models import Session
+from .task_queue import enqueue
 
 
 load_dotenv()
@@ -26,58 +27,74 @@ eud_header = {
 }
 
 
-def send_forum_msg(id: int, title: str, msg: str, link_text: str, link_url: str, mail: bool = False) -> any:
-    via = "board.ping"
-    if mail:
-        via += ",mail"
+NOTIFICATION_TIMEOUT = (3, 10)
+
+
+def _send_notification_request(id: int, title: str, message: str, link_text: str, link_url: str, via: str) -> any:
     data = {
         "title": title,
-        "message": msg,
+        "message": message,
         "source_name": "VATGER ATD",
         "link_text": link_text,
         "link_url": link_url,
-        "via": "board.ping",
+        "via": via,
     }
-    
+
     header = {"Authorization": f"Token {os.getenv("VATGER_API_KEY")}"}
     r = requests.post(
         f"http://vatsim-germany.org/api/user/{id}/send_notification",
         data=data,
         headers=header,
+        timeout=NOTIFICATION_TIMEOUT,
     )
+    r.raise_for_status()
     return r.json()
 
-def send_mail(id:int, title:str, msg:str, link_text:str, link_url:str) -> any:
-    data = {
-        "title": title,
-        "message": msg,
-        "source_name": "VATGER ATD",
-        "link_text": link_text,
-        "link_url": link_url,
-        "via": "mail",
-    }
-    header = {"Authorization": f"Token {os.getenv("VATGER_API_KEY")}"}
-    r = requests.post(
-        f"http://vatsim-germany.org/api/user/{id}/send_notification",
-        data=data,
-        headers=header,
+def _queue_notification(id: int, title: str, msg: str, link_text: str, link_url: str, via: str) -> None:
+    enqueue(
+        "send_notification",
+        {
+            "id": id,
+            "title": title,
+            "message": msg,
+            "link_text": link_text,
+            "link_url": link_url,
+            "via": via,
+        },
     )
-    return r.json()
+
+
+def send_forum_msg(id: int, title: str, msg: str, link_text: str, link_url: str, mail: bool = False) -> None:
+    via = "board.ping,mail" if mail else "board.ping"
+    _queue_notification(id, title, msg, link_text, link_url, via)
+
+
+def send_mail(id: int, title: str, msg: str, link_text: str, link_url: str) -> None:
+    _queue_notification(id, title, msg, link_text, link_url, "mail")
+
+
+def assign_training_exam_request(user_cid: int, exam_id: int, instructor_cid: str) -> bool:
+    r = requests.post(
+        "https://core.vateud.net/api/facility/training/exams/assign",
+        headers=eud_header,
+        data={
+            "user_cid": user_cid,
+            "exam_id": exam_id,
+            "instructor_cid": instructor_cid,
+        },
+        timeout=NOTIFICATION_TIMEOUT,
+    )
+    r.raise_for_status()
+    return r.json().get("success", True)
 
 def generate_signup_confirmation_msg(session: Session, Mail: bool) -> str:
-    if Mail:
-        kb_link = "<a href='https://knowledgebase.vatsim-germany.org'>knowledge base</a>"
-    else:
-        kb_link = "[URL='https://knowledgebase.vatsim-germany.org']knowledge base[/URL]"
-
-
     msg = (
-        f"Your signup for the session {session} has been confirmed.\n"
-        "The session will be held on the VATGER Teamspeak. Please check beforehand if you can access the server.\n"
-        f"More information can be found in the {kb_link}."
+        f"Your signup for {session} has been confirmed. \n"
+        "The session will be held on the vatger TeamSpeak server. "
+        "Please ensure you can access that server before the session. "
     )
 
-    if session.module.name == 'Module 4' and session.airport:
+    if session.module.name in ('Module 4', 'Module 5') and session.airport:
         match session.airport:
             case 'EDDW':
                 sop_url = "https://knowledgebase.vatsim-germany.org/books/sops-fir-bremen/chapter/eddw-bremen-airport"
@@ -91,6 +108,10 @@ def generate_signup_confirmation_msg(session: Session, Mail: bool) -> str:
                 sop_url = "https://knowledgebase.vatsim-germany.org/books/sops-fir-langen/chapter/eddg-munsterosnabruck-airport"
                 pack_url = "https://files.aero-nav.com/EDGG"
                 pack_name = "EDGG Full_Package"
+            case 'EDSB':
+                sop_url = "https://knowledgebase.vatsim-germany.org/books/sops-fir-langen/chapter/edsb-karlsruhebaden-baden"
+                pack_url = "https://files.aero-nav.com/EDGG"
+                pack_name = "EDGG Full_Package"
             case _:
                 sop_url = ""
                 pack_url = "https://files.aero-nav.com/EDXX"
@@ -100,17 +121,23 @@ def generate_signup_confirmation_msg(session: Session, Mail: bool) -> str:
             msg += (
                 "\n\n"
                 f"As part of the training, a simulation of air traffic control in "
-                f"<a href='{sop_url}'>{session.get_airport_display()}</a> is carried out in Eurscope."
-                f" This requires the <a href='{pack_url}'>{pack_name}</a> to be set up."
-                f" Instructions on how to install Euroscope can be found in the <a href='https://knowledgebase.vatsim-germany.org/books/atc-software'>knowledge base</a>."
+                f"<a href='{sop_url}'>{session.get_airport_display()}</a> will be carried out in EuroScope. "
+                f"This requires the <a href='{pack_url}'>{pack_name}</a> to be set up. "
             )
+            if session.module.name == "Module 4":
+                msg += (
+                    f"Instructions on how to install EuroScope and how to set up the package can be found in the <a href='https://knowledgebase.vatsim-germany.org/books/atc-software'>knowledge base</a>.\n"
+                    "Make sure you complete the setup according to our guide and test your installation by connecting as an observer before the session."
+                )
+            else:
+                msg += (
+                    "\nMake sure you are familiar with the airport and its SOP before your session."
+                )
+
         else:
             msg += (
                 "\n\n"
-                f"As part of the training, a simulation of air traffic control in "
-                f"[URL='{sop_url}']{session.get_airport_display()}[/URL] is carried out in Eurscope."
-                f" This requires the [URL='{pack_url}']{pack_name}[/URL] to be set up."
-                f" Instructions on how to install Euroscope can be found in the [URL='https://knowledgebase.vatsim-germany.org/books/atc-software']knowledge base[/URL]."
+                "For more details check your email."
             )
 
     return msg
@@ -243,10 +270,12 @@ def upgrade_and_add_to_roster(vatsim_id: int) -> bool:
             f"https://core.vateud.net/api/facility/user/{vatsim_id}/upgrade",
             headers=eud_header,
             data={"new_rating": 2, "instructor_cid": os.getenv("INSTRUCTOR_CID")},
+            timeout=NOTIFICATION_TIMEOUT,
         ).json()["success"]
         roster = requests.post(
             f"https://core.vateud.net/api/facility/roster/{vatsim_id}",
             headers=eud_header,
+            timeout=NOTIFICATION_TIMEOUT,
         ).json()["success"]
         tr_entry = RosterEntry(cid=int(vatsim_id))
         tr_entry.save()

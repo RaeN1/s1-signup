@@ -7,6 +7,5 @@ class Command(BaseCommand):
     help = "Initial setup to create modules"
 
     def handle(self, *args, **kwargs):
-        Module.objects.create(name="Module 1")
-        Module.objects.create(name="Module 3")
-        Module.objects.create(name="Module 4")
+        for name in ("Module 1", "Module 3", "Module 4", "Module 5"):
+            Module.objects.get_or_create(name=name)
