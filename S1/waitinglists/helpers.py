@@ -94,7 +94,7 @@ def generate_signup_confirmation_msg(session: Session, Mail: bool) -> str:
         "Please ensure you can access that server before the session. "
     )
 
-    if session.module.name == 'Module 4' and session.airport:
+    if session.module.name in ('Module 4', 'Module 5') and session.airport:
         match session.airport:
             case 'EDDW':
                 sop_url = "https://knowledgebase.vatsim-germany.org/books/sops-fir-bremen/chapter/eddw-bremen-airport"
@@ -108,6 +108,10 @@ def generate_signup_confirmation_msg(session: Session, Mail: bool) -> str:
                 sop_url = "https://knowledgebase.vatsim-germany.org/books/sops-fir-langen/chapter/eddg-munsterosnabruck-airport"
                 pack_url = "https://files.aero-nav.com/EDGG"
                 pack_name = "EDGG Full_Package"
+            case 'EDSB':
+                sop_url = "https://knowledgebase.vatsim-germany.org/books/sops-fir-langen/chapter/edsb-karlsruhebaden-baden"
+                pack_url = "https://files.aero-nav.com/EDGG"
+                pack_name = "EDGG Full_Package"
             case _:
                 sop_url = ""
                 pack_url = "https://files.aero-nav.com/EDXX"
@@ -119,9 +123,17 @@ def generate_signup_confirmation_msg(session: Session, Mail: bool) -> str:
                 f"As part of the training, a simulation of air traffic control in "
                 f"<a href='{sop_url}'>{session.get_airport_display()}</a> will be carried out in EuroScope. "
                 f"This requires the <a href='{pack_url}'>{pack_name}</a> to be set up. "
-                f"Instructions on how to install EuroScope and how to set up the package can be found in the <a href='https://knowledgebase.vatsim-germany.org/books/atc-software'>knowledge base</a>.\n"
-                "Make sure you complete the setup according to our guide and test your installation by connecting as an observer before the session."
             )
+            if session.module.name == "Module 4":
+                msg += (
+                    f"Instructions on how to install EuroScope and how to set up the package can be found in the <a href='https://knowledgebase.vatsim-germany.org/books/atc-software'>knowledge base</a>.\n"
+                    "Make sure you complete the setup according to our guide and test your installation by connecting as an observer before the session."
+                )
+            else:
+                msg += (
+                    "\nMake sure you are familiar with the airport and its SOP before your session."
+                )
+
         else:
             msg += (
                 "\n\n"

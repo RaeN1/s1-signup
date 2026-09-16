@@ -52,7 +52,7 @@ def can_sign_up(user, module) -> bool:
     if module.name != "Module 5":
         return True
     else:
-        has_rating = user.userdetail.rating > 1
+        has_rating = user.userdetail.rating == 2
         has_hours = get_hours(user.username) >= 20
         # If Module 5, user must not be on theory roster
         try:
@@ -138,7 +138,7 @@ def index(request):
     module_list = Module.objects.all().order_by("name")
     if not module_2_completed:
         module_list = module_list[:1]
-    elif not can_upgrade(user, module_list[-1]):
+    elif not can_sign_up(user, module_list[-1]):
         module_list = module_list[:-1]
 
     modules = {}
