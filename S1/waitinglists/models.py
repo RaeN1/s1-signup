@@ -32,6 +32,7 @@ class Session(models.Model):
         EDDW = "EDDW", "Bremen (EDDW)"
         EDDC = "EDDC", "Dresden (EDDC)"
         EDDG = "EDDG", "Münster/Osnabrück (EDDG)"
+        EDSB = "EDSB", "Karlsruhe/Baden-Baden (EDSB)"
 
     module = models.ForeignKey(Module, on_delete=models.CASCADE)
     datetime = models.DateTimeField()
@@ -52,9 +53,9 @@ class Session(models.Model):
 
     def clean(self) -> None:
         super().clean()
-        if self.module and self.module.name == 'Module 4':
+        if self.module and self.module.name in ('Module 4', 'Module 5'):
             if not self.airport:
-                raise ValidationError({"airport": "Airport is required for Module 4 sessions."})
+                raise ValidationError({"airport": "Airport is required for Module 4 and 5 sessions."})
         else:
            self.airport = ""
 
