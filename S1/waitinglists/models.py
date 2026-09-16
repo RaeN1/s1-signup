@@ -33,6 +33,7 @@ class Session(models.Model):
         EDDC = "EDDC", "Dresden (EDDC)"
         EDDG = "EDDG", "Münster/Osnabrück (EDDG)"
         EDSB = "EDSB", "Karlsruhe/Baden-Baden (EDSB)"
+        EDDN = "EDDN", "Nürnberg (EDDN)"
 
     module = models.ForeignKey(Module, on_delete=models.CASCADE)
     datetime = models.DateTimeField()
