@@ -136,7 +136,7 @@ def index(request):
     is_moodle_signed_up = send_moodle_find_user(user.username) != False
     waiting_for_modules = []
 
-    module_list = Module.objects.all().order_by("name")
+    module_list = list(Module.objects.all().order_by("name"))
     if not module_2_completed:
         module_list = module_list[:1]
     elif not can_sign_up(user, module_list[-1]):
