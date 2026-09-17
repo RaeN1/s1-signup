@@ -30,7 +30,7 @@ eud_header = {
 NOTIFICATION_TIMEOUT = (3, 10)
 
 
-def _send_notification_request(id: int, title: str, message: str, link_text: str, link_url: str, via: str) -> any:
+def _send_notification_request(id: int, title: str, message: str, link_text: str, link_url: str, via: str):
     data = {
         "title": title,
         "message": message,
@@ -112,6 +112,10 @@ def generate_signup_confirmation_msg(session: Session, Mail: bool) -> str:
                 sop_url = "https://knowledgebase.vatsim-germany.org/books/sops-fir-langen/chapter/edsb-karlsruhebaden-baden"
                 pack_url = "https://files.aero-nav.com/EDGG"
                 pack_name = "EDGG Full_Package"
+            case 'EDDN':
+                sop_url = "https://knowledgebase.vatsim-germany.org/books/sops-fir-munchen/chapter/eddn-nurnberg-airport"
+                pack_url = "https://files.aero-nav.com/EDMM"
+                pack_name = "EDMM Full-Package"
             case _:
                 sop_url = ""
                 pack_url = "https://files.aero-nav.com/EDXX"
